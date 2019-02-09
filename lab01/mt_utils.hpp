@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 
+#include <algorithm>
+
 #include <vector>
 
 #include <mutex>
@@ -8,7 +10,11 @@
 
 #include <iostream>
 
+#include <chrono>
+
 #include "integral.hpp"
+
+using Time = std::chrono::high_resolution_clock;
 
 std::mutex mutex;
 double result;
@@ -20,31 +26,32 @@ void thread_integrate(double a, double b, int step_count) {
 }
 
 void multithread_integral_test(
-    int a, int b, size_t threads_count = 4,
-    size_t iteration_count = std::numeric_limits<size_t>::max()) {
+    int a, int b, uint32_t threads_count = 4,
+    uint64_t iteration_count = std::numeric_limits<uint64_t>::max()) {
+    int step_count = static_cast<int>(iteration_count / threads_count);
     std::vector<std::thread> threads;
     double step_length = (static_cast<double>(b - a)) / threads_count;
 
-    time_t start_time;
-    time_t finish_time;
-    time(&start_time);
+    auto t0 = Time::now();
 
     for(size_t i = 0; i < threads_count; ++i) {
         threads.push_back(std::thread(
             thread_integrate, a + step_length * i, a + step_length * (i + 1),
-            iteration_count / threads_count));
+            step_count));
     }
 
-    for(auto it = threads.begin(); it != threads.end(); ++it) {
-        if((*it).joinable())
-            (*it).join();
-    }
+    std::for_each(
+        threads.begin(), threads.end(), std::mem_fn(&std::thread::join));
 
-    time(&finish_time);
+    auto t1 = Time::now();
+    auto duration = t1 - t0;
+    auto seconds =
+        std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+    auto milliseconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 
-    std::cout << "Result is: " << result
-              << " Operation time: " << difftime(finish_time, start_time)
-              << std::endl;
+    std::cout << "Result is: " << result << " Operation time: " << seconds
+              << " sec (" << milliseconds << " ms)" << std::endl;
 
     return;
 }
