@@ -14,6 +14,14 @@ namespace openmp_matrix {
 
 namespace utils {
 
+template<class Enum>
+constexpr typename std::underlying_type<Enum>::type enum_to_int(
+    Enum v) noexcept {
+    return static_cast<typename std::underlying_type<Enum>::type>(v);
+}
+
+enum class schedule_type { static_t, dynamic_t, guided_t };
+
 template<class Ò>
 std::string to_string(const Ò&t) {
     std::ostringstream os;
@@ -26,9 +34,9 @@ void generate_data(std::string filename, int x, int y) {
     std::vector<double> vec;
     vec.resize(static_cast<size_t>(x * y));
     std::string str;
-	int matrix_scale = x * y;
+    int matrix_scale = x * y;
 
-#pragma omp parallel for schedule(static, 2) \
+#pragma omp parallel for schedule(static, 1) \
     firstprivate(matrix_scale, x, y) private(ij, i, j)
     for(ij = 0; ij < matrix_scale; ++ij) {
         j = ij / x;
@@ -38,7 +46,7 @@ void generate_data(std::string filename, int x, int y) {
     std::stringstream sstr;
     sstr << to_string(x) << " " << to_string(y) << std::endl;
     uint8_t counter = 0;
-	uint8_t border = x - 1;
+    uint8_t border = x - 1;
     for(auto num : vec) {
         sstr << to_string(num);
         if(counter == border) {
@@ -60,7 +68,12 @@ void generate_data(std::string filename, int x, int y) {
 
 template<class T>
 void omp_matrix_test_vector(
-    std::vector<T> &matrix_n, std::vector<T> &matrix_m) {
+    std::vector<T> &matrix_n, std::vector<T> &matrix_m,
+    utils::schedule_type schedule_t =
+        openmp_matrix::utils::schedule_type::static_t,
+    int chunks = 1, int threads_num = omp_get_max_threads()) {
+    omp_set_dynamic(0);
+    omp_set_num_threads(threads_num);
     int ij, i, j, n, k;
     std::vector<T> result;
 
@@ -76,18 +89,32 @@ void omp_matrix_test_vector(
 
     auto t0 = Time::now();
 
-    omp_set_dynamic(0);
-    omp_set_num_threads(8);
-#pragma omp parallel for schedule(static, 2) firstprivate( \
-    size_m, size_n, multisize) private(ij, i, j, k) if(size_n * size_m > 150)
-    for(ij = 0; ij < multisize; ++ij) {
-        j = ij / size_n;
-        i = ij % size_m;
-        T total = 0;
-        for(k = 0; k < size_n; ++k) {
-            total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
+    if(schedule_t == utils::schedule_type::static_t) {
+#pragma omp parallel for schedule(static, chunks) firstprivate( \
+    size_m, size_n, multisize) private(ij, i, j, k) if(multisize >= 22500)
+        for(ij = 0; ij < multisize; ++ij) {
+            j = ij / size_n;
+            i = ij % size_m;
+            T total = 0;
+            for(k = 0; k < size_n; ++k) {
+                total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
+            }
+            result[i * size_n + j] = total;
         }
-        result[i * size_n + j] = total;
+    }
+
+    if(schedule_t == utils::schedule_type::dynamic_t) {
+#pragma omp parallel for schedule(dynamic, chunks) firstprivate( \
+    size_m, size_n, multisize) private(ij, i, j, k) if(multisize >= 22500)
+        for(ij = 0; ij < multisize; ++ij) {
+            j = ij / size_n;
+            i = ij % size_m;
+            T total = 0;
+            for(k = 0; k < size_n; ++k) {
+                total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
+            }
+            result[i * size_n + j] = total;
+        }
     }
 
     auto t1 = Time::now();
