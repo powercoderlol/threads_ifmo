@@ -117,6 +117,20 @@ void omp_matrix_test_vector(
         }
     }
 
+	if (schedule_t == utils::schedule_type::guided_t) {
+#pragma omp parallel for schedule(guided, chunks) firstprivate( \
+    size_m, size_n, multisize) private(ij, i, j, k) if(multisize >= 22500)
+		for (ij = 0; ij < multisize; ++ij) {
+			j = ij / size_n;
+			i = ij % size_m;
+			T total = 0;
+			for (k = 0; k < size_n; ++k) {
+				total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
+			}
+			result[i * size_n + j] = total;
+		}
+	}
+
     auto t1 = Time::now();
 
     auto duration = t1 - t0;
