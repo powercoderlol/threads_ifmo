@@ -40,8 +40,8 @@ void generate_data(std::string filename, int x, int y) {
     firstprivate(matrix_scale, x, y) private(ij, i, j)
     for(ij = 0; ij < matrix_scale; ++ij) {
         j = ij / x;
-        i = ij % y;
-        vec[i + j * x] = 1.0 * rand() / RAND_MAX;
+        i = ij % x;
+        vec[i * y + j] = 1.0 * rand() / RAND_MAX;
     }
     std::stringstream sstr;
     sstr << to_string(x) << " " << to_string(y) << std::endl;
@@ -77,61 +77,92 @@ void omp_matrix_test_vector(
     int ij, i, j, n, k;
     std::vector<T> result;
 
-    int size_n = static_cast<int>(matrix_n.back());
+    int columns_n = static_cast<int>(matrix_n.back());
     matrix_n.pop_back();
-    int size_m = static_cast<int>(matrix_n.back());
+    int rows_n = static_cast<int>(matrix_n.back());
     matrix_n.pop_back();
+    int columns_m = static_cast<int>(matrix_m.back());
     matrix_m.pop_back();
+    int rows_m = static_cast<int>(matrix_m.back());
     matrix_m.pop_back();
 
-    auto multisize = size_n * size_m;
+    if(columns_n != rows_m) {
+        std::cout << "can't multiple matrices" << std::endl;
+        return;
+    }
+
+    auto multisize = rows_n * columns_m;
     result.resize(multisize);
+
+    /*
+    for(ij = 0; ij < multisize; ++ij) {
+        j = ij / rows_n;
+        i = ij % rows_n;
+        T total = 0;
+        for(k = 0; k < columns_n; ++k) {
+            total += matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
+        }
+        result[i * columns_m + j] = total;
+    }
+    */
 
     auto t0 = Time::now();
 
     if(schedule_t == utils::schedule_type::static_t) {
-#pragma omp parallel for schedule(static, chunks) firstprivate( \
-    size_m, size_n, multisize) private(ij, i, j, k) if(multisize >= 22500)
+#pragma omp parallel for schedule(static, chunks)                          \
+    firstprivate(rows_m, rows_n, columns_m, columns_n, multisize) private( \
+        ij, i, j, k) if(multisize >= 22500)
         for(ij = 0; ij < multisize; ++ij) {
-            j = ij / size_n;
-            i = ij % size_m;
+            j = ij / rows_n;
+            i = ij % rows_n;
             T total = 0;
-            for(k = 0; k < size_n; ++k) {
-                total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
+            for(k = 0; k < columns_n; ++k) {
+                total +=
+                    matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
             }
-            result[i * size_n + j] = total;
+            result[i * columns_m + j] = total;
         }
     }
 
     if(schedule_t == utils::schedule_type::dynamic_t) {
-#pragma omp parallel for schedule(dynamic, chunks) firstprivate( \
-    size_m, size_n, multisize) private(ij, i, j, k) if(multisize >= 22500)
+#pragma omp parallel for schedule(dynamic, chunks)                         \
+    firstprivate(rows_m, rows_n, columns_m, columns_n, multisize) private( \
+        ij, i, j, k) if(multisize >= 22500)
         for(ij = 0; ij < multisize; ++ij) {
-            j = ij / size_n;
-            i = ij % size_m;
+            j = ij / rows_n;
+            i = ij % rows_n;
             T total = 0;
-            for(k = 0; k < size_n; ++k) {
-                total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
+            for(k = 0; k < columns_n; ++k) {
+                total +=
+                    matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
             }
-            result[i * size_n + j] = total;
+            result[i * columns_m + j] = total;
         }
     }
 
-	if (schedule_t == utils::schedule_type::guided_t) {
-#pragma omp parallel for schedule(guided, chunks) firstprivate( \
-    size_m, size_n, multisize) private(ij, i, j, k) if(multisize >= 22500)
-		for (ij = 0; ij < multisize; ++ij) {
-			j = ij / size_n;
-			i = ij % size_m;
-			T total = 0;
-			for (k = 0; k < size_n; ++k) {
-				total += matrix_m[i * size_m + k] * matrix_n[k * size_n + j];
-			}
-			result[i * size_n + j] = total;
-		}
-	}
+    if(schedule_t == utils::schedule_type::guided_t) {
+#pragma omp parallel for schedule(guided, chunks)                          \
+    firstprivate(rows_m, rows_n, columns_m, columns_n, multisize) private( \
+        ij, i, j, k) if(multisize >= 22500)
+        for(ij = 0; ij < multisize; ++ij) {
+            j = ij / rows_n;
+            i = ij % rows_n;
+            T total = 0;
+            for(k = 0; k < columns_n; ++k) {
+                total +=
+                    matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
+            }
+            result[i * columns_m + j] = total;
+        }
+    }
 
     auto t1 = Time::now();
+
+    /*
+    for(auto num : result) {
+        std::cout << num << " ";
+    }
+    */
 
     auto duration = t1 - t0;
     auto seconds =
