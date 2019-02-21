@@ -24,8 +24,7 @@ void read_from_file(
     file.close();
 }
 
-template<class T>
-void fill_matrix(std::stringstream &buf, std::vector<T> &vec) {
+void fill_matrix(std::stringstream &buf, std::vector<uint32_t> &vec) {
     std::string token;
     uint64_t size, n, m;
     size = m = n = 0;
@@ -49,8 +48,8 @@ void fill_matrix(std::stringstream &buf, std::vector<T> &vec) {
             break;
         }
     }
-    vec.push_back(static_cast<T>(n));
-    vec.push_back(static_cast<T>(m));
+    vec.push_back(static_cast<uint32_t>(n));
+    vec.push_back(static_cast<uint32_t>(m));
 }
 
 } // namespace utils

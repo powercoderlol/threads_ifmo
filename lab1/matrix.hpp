@@ -31,22 +31,26 @@ std::string to_string(const Ò&t) {
 
 void generate_data(std::string filename, int x, int y) {
     int ij, i, j;
-    std::vector<double> vec;
+    std::vector<uint32_t> vec;
     vec.resize(static_cast<size_t>(x * y));
     std::string str;
     int matrix_scale = x * y;
 
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
+    std::uniform_int_distribution<uint32_t> distr(1, 500);
+
 #pragma omp parallel for schedule(static, 1) \
     firstprivate(matrix_scale, x, y) private(ij, i, j)
     for(ij = 0; ij < matrix_scale; ++ij) {
-        j = ij / x;
-        i = ij % x;
-        vec[i * y + j] = 1.0 * rand() / RAND_MAX;
+        j = ij / y;
+        i = ij % y;
+        vec[i * x + j] = distr(generator);
     }
     std::stringstream sstr;
     sstr << to_string(x) << " " << to_string(y) << std::endl;
     uint8_t counter = 0;
-    uint8_t border = x - 1;
+    uint8_t border = y - 1;
     for(auto num : vec) {
         sstr << to_string(num);
         if(counter == border) {
@@ -66,16 +70,15 @@ void generate_data(std::string filename, int x, int y) {
 }
 } // namespace utils
 
-template<class T>
 void omp_matrix_test_vector(
-    std::vector<T> &matrix_n, std::vector<T> &matrix_m,
+    std::vector<uint32_t> &matrix_n, std::vector<uint32_t> &matrix_m,
     utils::schedule_type schedule_t =
         openmp_matrix::utils::schedule_type::static_t,
     int chunks = 1, int threads_num = omp_get_max_threads()) {
     omp_set_dynamic(0);
     omp_set_num_threads(threads_num);
     int ij, i, j, n, k;
-    std::vector<T> result;
+    std::vector<uint32_t> result;
 
     int columns_n = static_cast<int>(matrix_n.back());
     matrix_n.pop_back();
@@ -98,7 +101,7 @@ void omp_matrix_test_vector(
     for(ij = 0; ij < multisize; ++ij) {
         j = ij / rows_n;
         i = ij % rows_n;
-        T total = 0;
+        uint32_t total = 0;
         for(k = 0; k < columns_n; ++k) {
             total += matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
         }
@@ -115,7 +118,7 @@ void omp_matrix_test_vector(
         for(ij = 0; ij < multisize; ++ij) {
             j = ij / rows_n;
             i = ij % rows_n;
-            T total = 0;
+            uint32_t total = 0;
             for(k = 0; k < columns_n; ++k) {
                 total +=
                     matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
@@ -131,7 +134,7 @@ void omp_matrix_test_vector(
         for(ij = 0; ij < multisize; ++ij) {
             j = ij / rows_n;
             i = ij % rows_n;
-            T total = 0;
+            uint32_t total = 0;
             for(k = 0; k < columns_n; ++k) {
                 total +=
                     matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
@@ -147,7 +150,7 @@ void omp_matrix_test_vector(
         for(ij = 0; ij < multisize; ++ij) {
             j = ij / rows_n;
             i = ij % rows_n;
-            T total = 0;
+            uint32_t total = 0;
             for(k = 0; k < columns_n; ++k) {
                 total +=
                     matrix_n[i * columns_n + k] * matrix_m[k * columns_m + j];
