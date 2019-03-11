@@ -8,6 +8,8 @@
 
 #include <chrono>
 
+#include <array>
+
 using Time = std::chrono::high_resolution_clock;
 
 namespace openmp_matrix {
@@ -21,9 +23,11 @@ constexpr typename std::underlying_type<Enum>::type enum_to_int(
 }
 
 enum class schedule_type { static_t, dynamic_t, guided_t };
+static std::array<std::string, 3> schedule_traits{"static", "dynamic",
+                                                  "guided"};
 
 template<class Ò>
-std::string to_string(const Ò&t) {
+std::string to_string(const Ò& t) {
     std::ostringstream os;
     os << t;
     return os.str();
@@ -71,13 +75,13 @@ void generate_data(std::string filename, int x, int y) {
 } // namespace utils
 
 void omp_matrix_test_vector(
-    std::vector<uint32_t> &matrix_n, std::vector<uint32_t> &matrix_m,
+    std::vector<uint32_t>& matrix_n, std::vector<uint32_t>& matrix_m,
     utils::schedule_type schedule_t =
         openmp_matrix::utils::schedule_type::static_t,
-    int chunks = 1, int threads_num = omp_get_max_threads()) {
+    int chunks = 1, int threads_num = omp_get_max_threads(), bool write_result = false) {
     omp_set_dynamic(0);
     omp_set_num_threads(threads_num);
-    int ij, i, j, n, k;
+    int ij, i, j, k;
     std::vector<uint32_t> result;
 
     int columns_n = static_cast<int>(matrix_n.back());
@@ -161,20 +165,38 @@ void omp_matrix_test_vector(
 
     auto t1 = Time::now();
 
-    /*
-    for(auto num : result) {
-        std::cout << num << " ";
-    }
-    */
-
     auto duration = t1 - t0;
     auto seconds =
         std::chrono::duration_cast<std::chrono::seconds>(duration).count();
     auto milliseconds =
         std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 
-    std::cout << "Execution time: " << seconds << " sec (" << milliseconds
-              << " ms)" << std::endl;
+    std::string json;
+    json.append("{\"number_of_threads\": " + std::to_string(threads_num));
+    json.append(
+        ", \"schedule_type\": \""
+        + utils::schedule_traits[enum_to_int(schedule_t)]);
+    // json.append(
+    //    ", \"schedule_type\": "
+    //    + std::to_string(utils::enum_to_int(schedule_t)));
+    json.append("\", \"number_of_chunks\": " + std::to_string(chunks));
+    json.append(", \"execution_time\": " + std::to_string(milliseconds));
+    json.append(
+        ", \"columns\": " + std::to_string(columns_m)
+        + ", \"rows\": " + std::to_string(rows_n) + ", \"result\": [");
+    if(write_result) {
+        bool first = true;
+        for(auto num : result) {
+            if(!first)
+                json.append(", ");
+            json.append(std::to_string(num));
+            if(first)
+                first = false;
+        }
+    }
+    json.append("]}");
+
+    std::cout << json;
 }
 
 void omp_matrix_test() {
@@ -183,9 +205,9 @@ void omp_matrix_test() {
 
     n = 3;
 
-    A = (double *)malloc(sizeof(double) * n * n);
-    B = (double *)malloc(sizeof(double) * n * n);
-    C = (double *)malloc(sizeof(double) * n * n);
+    A = (double*)malloc(sizeof(double) * n * n);
+    B = (double*)malloc(sizeof(double) * n * n);
+    C = (double*)malloc(sizeof(double) * n * n);
     for(i = 0; i < n * n; i++) {
         A[i] = 1.0 * rand() / RAND_MAX;
         B[i] = 1.0 * rand() / RAND_MAX;
@@ -219,15 +241,16 @@ void omp_matrix_test() {
               << " ms)" << std::endl;
 }
 
+/*
 void omp_matrix_test_new() {
     int ij, i, j, n, k;
     double **A, **B, **C;
 
     n = 2000;
 
-    A = new double *[n];
-    B = new double *[n];
-    C = new double *[n];
+    A = new double*[n];
+    B = new double*[n];
+    C = new double*[n];
     for(size_t i = 0; i < n; ++i) {
         A[i] = new double[n];
         B[i] = new double[n];
@@ -264,5 +287,6 @@ void omp_matrix_test_new() {
     std::cout << "Execution time: " << seconds << " sec (" << milliseconds
               << " ms)" << std::endl;
 }
+*/
 
 } // namespace openmp_matrix
