@@ -12,8 +12,8 @@ int main(int argc, char* argv[]) {
         utils::fill_matrix(m2_buf, matrix_m);
         auto schedule_t =
             static_cast<openmp_matrix::utils::schedule_type>(atoi(argv[3]));
-        auto chunks = atoi(argv[4]); 
-		auto threads_num = atoi(argv[5]);
+        auto chunks = atoi(argv[4]);
+        auto threads_num = atoi(argv[5]);
         openmp_matrix::omp_matrix_test_vector(
             matrix_n, matrix_m, schedule_t, chunks, threads_num, atoi(argv[6]));
     }

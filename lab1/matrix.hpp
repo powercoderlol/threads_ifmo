@@ -78,7 +78,8 @@ void omp_matrix_test_vector(
     std::vector<uint32_t>& matrix_n, std::vector<uint32_t>& matrix_m,
     utils::schedule_type schedule_t =
         openmp_matrix::utils::schedule_type::static_t,
-    int chunks = 1, int threads_num = omp_get_max_threads(), bool write_result = false) {
+    int chunks = 1, int threads_num = omp_get_max_threads(),
+    bool write_result = false) {
     omp_set_dynamic(0);
     omp_set_num_threads(threads_num);
     int ij, i, j, k;
