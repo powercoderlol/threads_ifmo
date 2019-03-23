@@ -26,8 +26,8 @@ enum class schedule_type { static_t, dynamic_t, guided_t };
 static std::array<std::string, 3> schedule_traits{"static", "dynamic",
                                                   "guided"};
 
-template<class Ò>
-std::string to_string(const Ò& t) {
+template<class T>
+std::string to_string(const T& t) {
     std::ostringstream os;
     os << t;
     return os.str();
