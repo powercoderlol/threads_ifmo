@@ -197,7 +197,7 @@ void omp_matrix_test_vector(
     }
     json.append("]}");
 
-    std::cout << json;
+    std::cout << json << std::endl;
 }
 
 void omp_matrix_test() {
