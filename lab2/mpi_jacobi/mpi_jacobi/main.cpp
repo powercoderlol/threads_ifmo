@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "jacobi.hpp"
+#include "utils.hpp"
 
 // 1. Why char**
 // 2. Why can't send
@@ -184,17 +185,16 @@ void mpi_scatter_gather(int argc, char* argv[]) {
 }
 
 void jacobi_test() {
-    std::vector<double> free_ch{0.76, 0.08, 1.12, 0.68};
-    std::vector<double> input_matrix{0.78,  -0.02, -0.12, -0.14, -0.02, 0.86,
-                                     -0.04, 0.06,  -0.12, -0.04, 0.72,  -0.08,
-                                     -0.14, 0.06,  -0.08, 0.74};
-    size_t iteration_num = 20;
-    double e = 0.001;
-    auto res = algebra::yakoby_main(input_matrix, free_ch, iteration_num, e);
-    std::cout << "result vector :" << std::endl;
-    std::cout << std::setprecision(20);
-    for(auto val : res)
+    std::vector<double> x, input_matrix;
+    std::stringstream sstr;
+    filesystem::read_from_file("input_data.txt", sstr);
+    filesystem::fill_matrix(sstr, input_matrix);
+
+    auto res = algebra::yakoby_main(input_matrix, 20, 0.001);
+    std::cout << "result vector" << std::endl;
+    for(auto val : res) {
         std::cout << val << " ";
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -220,7 +220,13 @@ int main(int argc, char* argv[]) {
     // absent of buffer in real world
     // test impl for 4 CPUs
     // algebra::mpi_jacobi(argc, argv);
-    algebra::mpi_extension::yakoby_mpi_demo(argc, argv);
+    // algebra::mpi_extension::yakoby_mpi_demo(argc, argv);
+    jacobi_test();
+
+    // TODO: OpenMP multithreading
+    // TODO: read from file
+
+    // MPI_Type_contiguous
 
     return 0;
 }

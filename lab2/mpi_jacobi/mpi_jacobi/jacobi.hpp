@@ -11,34 +11,38 @@ namespace algebra {
 
 // jacobi
 // returns vector with result coeffs
-// plus number of passed iterations
+// plus number of passed iterations if passed < iteration_num
 template<
     class T,
     class = typename std::enable_if<std::is_floating_point<T>::value>::type>
 std::vector<T> yakoby_main(
-    std::vector<T>& input_matrix, std::vector<T>& free_ch, size_t iteration_num,
-    double e = 0) {
-    auto sz = free_ch.size();
-    std::vector<T> prev;
-    prev.resize(sz);
-    std::fill(prev.begin(), prev.end(), 0);
-    std::vector<T> curr;
-    curr.resize(sz);
-    std::fill(curr.begin(), curr.end(), 0);
+    std::vector<T>& input_matrix, size_t iteration_num, double e = 0) {
     T norm, buff;
+    size_t offset, matrix_dimension;
+    std::vector<T> prev, curr;
+    // get offset
+    offset = static_cast<size_t>(input_matrix.back());
+    input_matrix.pop_back();
+    input_matrix.pop_back();
+    // get row length (actually offset - 1)
+    // matrix_dimension = static_cast<size_t>(input_matrix.back());
+    matrix_dimension = offset - 1;
+    // fill initial data
+    curr.resize(matrix_dimension, 0);
+    prev.resize(matrix_dimension, 0);
     for(size_t i = 0; i < iteration_num; ++i) {
         prev = curr;
-        for(size_t j = 0; j < sz; ++j) {
-            curr[j] = free_ch[j];
-            for(size_t k = 0; k < sz; ++k) {
+        for(size_t j = 0; j < matrix_dimension; ++j) {
+            curr[j] = input_matrix[j * offset + matrix_dimension];
+            for(size_t k = 0; k < matrix_dimension; ++k) {
                 if(j != k)
-                    curr[j] -= prev[k] * input_matrix[j * sz + k];
+                    curr[j] -= prev[k] * input_matrix[j * offset + k];
             }
-            curr[j] /= input_matrix[j * sz + j];
+            curr[j] /= input_matrix[j * offset + j];
         }
         if(e != 0) {
             norm = fabs(prev[0] - curr[0]);
-            for(size_t k = 0; k < sz; ++k) {
+            for(size_t k = 0; k < matrix_dimension; ++k) {
                 buff = fabs(prev[k] - curr[k]);
                 if(buff > norm)
                     norm = buff;
@@ -91,6 +95,8 @@ void yakoby_mpi_demo(int argc, char* argv[]) {
         curr /= row[id];
         MPI_Allgather(
             &curr, 1, MPI_DOUBLE, &prev_coefs, 1, MPI_DOUBLE, MPI_COMM_WORLD);
+        // MPI_Allreduce(
+        //    &curr, &prev_coefs, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     }
 
     if(0 == id) {
