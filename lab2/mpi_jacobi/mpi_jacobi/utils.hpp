@@ -22,7 +22,50 @@ void print_time_diff(tp& t0, tp& t1) {
 }
 } // namespace time_utils
 
+struct matrix_data {
+    unsigned int counters[3];
+    double* pdata;
+    matrix_data() {
+        memset(counters, 0, sizeof(counters));
+    }
+};
+
 namespace filesystem {
+
+matrix_data read(std::string filename) {
+    std::string token;
+    matrix_data data;
+    std::stringstream stream;
+    stream << std::ifstream(filename).rdbuf();
+    while(stream >> token) {
+        switch(data.counters[0]) {
+        case 0:
+            data.counters[1] = std::stoul(token);
+            ++data.counters[0];
+            break;
+        case 1:
+            data.counters[2] = std::stoul(token);
+            ++data.counters[0];
+            break;
+        case 2:
+            /*data.pdata = (double*)malloc(
+                sizeof(double) * (data.counters[1] * data.counters[2]));*/
+            data.pdata = new double[data.counters[1] * data.counters[2]];
+            data.pdata[data.counters[0] - 2] = stod(token);
+            ++data.counters[0];
+            break;
+        default:
+            data.pdata[data.counters[0] - 2] = stod(token);
+            ++data.counters[0];
+            break;
+        }
+    }
+    data.counters[0] = data.counters[0] - 2;
+    /*data.pdata[data.counters[0] - 2] = data.counters[1];
+    data.pdata[data.counters[0] - 1] = data.counters[2];
+    data.pdata[data.counters[0]] = data.counters[0] - 2;*/
+    return data;
+}
 
 void read_from_file(std::string m1_filename, std::stringstream& m1) {
     m1 << std::ifstream(m1_filename).rdbuf();

@@ -43,7 +43,7 @@ def generate_test_data(num = 4, left = True, specific_diag_number = 0.5):
         matrix = specific_diag_number * numpy.random.randn(num, num)
         diags = numpy.diag(numpy.abs(matrix))
         sums = numpy.sum(numpy.abs(matrix), axis=1)
-        sum_of_row = sums + diags 
+        sum_of_row = sums + 0.5 + diags 
         matrix = matrix + sum_of_row*numpy.identity(num)
     else:
         matrix = specific_diag_number * numpy.random.randn(1, num)
