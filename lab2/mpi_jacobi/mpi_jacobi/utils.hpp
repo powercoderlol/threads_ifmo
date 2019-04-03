@@ -23,7 +23,7 @@ void print_time_diff(tp& t0, tp& t1) {
 } // namespace time_utils
 
 struct matrix_data {
-    unsigned int counters[3];
+    size_t counters[3];
     double* pdata;
     matrix_data() {
         memset(counters, 0, sizeof(counters));
