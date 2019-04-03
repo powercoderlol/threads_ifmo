@@ -67,8 +67,8 @@ def main():
     if(diagonally_dominant_test(coefs)):
         right_side = generate_test_data(num = unknown_number, left = False)
         # debug output
-        # expected_result = jacobi(coefs, right_side[0])
-        # print(expected_result)
+        expected_result = jacobi(coefs, right_side[0])
+        print(expected_result)
         # print(coefs)
         # print(right_side)
         coefs = numpy.concatenate((coefs, right_side.T), axis = 1)        

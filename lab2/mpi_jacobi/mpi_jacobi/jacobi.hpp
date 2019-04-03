@@ -7,6 +7,8 @@
 
 #include "numeric_traits.hpp"
 
+#include "utils.hpp"
+
 namespace algebra {
 
 // jacobi
@@ -58,56 +60,152 @@ std::vector<T> yakoby_main(
 
 namespace mpi_extension {
 
-void yakoby_mpi_demo(int argc, char* argv[]) {
-    int size, id;
-
-    /*double free_ch[4];
-    double input_matrix[16];*/
-    double free_ch[] = {0.76, 0.08, 1.12, 0.68};
-    double input_matrix[] = {0.78,  -0.02, -0.12, -0.14, -0.02, 0.86,
-                             -0.04, 0.06,  -0.12, -0.04, 0.72,  -0.08,
-                             -0.14, 0.06,  -0.08, 0.74};
-
-    double prev_coefs[] = {0, 0, 0, 0};
-    double row[] = {0, 0, 0, 0};
-    double received_free_coef;
-
+void fancy_mpi_jacobi(int argc, char* argv[]) {
+    matrix_data buff;
+    int counters[3];
+    int id, size, val;
     size_t iteration_num = 20;
-    // double e = 0.001;
+    size_t distr_number, cellar, queue_length;
+    double e = 0.001;
+    double *coefs, *received_buff, *prev, *curr, *curr_temp;
+    MPI_Request* reqs;
+    MPI_Status* stats;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    MPI_Scatter(
-        &free_ch, 1, MPI_DOUBLE, &received_free_coef, 1, MPI_DOUBLE, 0,
-        MPI_COMM_WORLD);
-    MPI_Scatter(
-        &input_matrix, 4, MPI_DOUBLE, &row, 4, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    reqs = new MPI_Request[size];
+    stats = new MPI_Status[size];
 
-    double curr;
-    for(size_t i = 0; i < iteration_num; ++i) {
-        curr = received_free_coef;
-        for(size_t k = 0; k < 4; ++k) {
-            if(k != id)
-                curr -= prev_coefs[k] * row[k];
-        }
-        curr /= row[id];
-        MPI_Allgather(
-            &curr, 1, MPI_DOUBLE, &prev_coefs, 1, MPI_DOUBLE, MPI_COMM_WORLD);
-        // MPI_Allreduce(
-        //    &curr, &prev_coefs, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    if(0 == id) {
+        buff = filesystem::read("input_data.txt");
+        counters[0] = buff.counters[0];
+        counters[1] = buff.counters[1];
+        counters[2] = buff.counters[2];
+    }
+
+    MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
+
+    coefs = new double[counters[0]];
+    received_buff = new double[counters[2]];
+    prev = new double[counters[1]];
+    curr_temp = new double[counters[1]];
+    curr = new double[counters[1]];
+    // memset(curr, 0, sizeof(curr));
+    // memset(prev, 0, sizeof(prev));
+    for(size_t k = 0; k < counters[1]; ++k) {
+        curr[k] = 0;
+        prev[k] = 0;
+        curr_temp[k] = 0;
     }
 
     if(0 == id) {
-        for(auto val : prev_coefs) {
-            std::cout << val << " ";
+        for(size_t k = 0; k < buff.counters[0]; ++k)
+            coefs[k] = buff.pdata[k];
+        // very smart (not)
+        delete[] buff.pdata;
+        distr_number = buff.counters[1] / size;
+        cellar = buff.counters[1] - distr_number * size;
+    }
+
+    MPI_Bcast(coefs, counters[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    int test_arr[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    int recv_repeater[4] = {0, 0, 0, 0};
+    // memset(recv_repeater, 0, sizeof(recv_repeater));
+
+    // static distribution, chunk = 1 row
+    queue_length = counters[1];
+    if(0 == id) {
+        for(size_t k = 0; k < queue_length; ++k) {
+            // auto send_rank = (k > size - 1) ? k - size * (k / size) : k;
+            auto send_rank = k - size * (k / size);
+            ++recv_repeater[send_rank];
         }
+    }
+    MPI_Bcast(&recv_repeater, 4, MPI_INT, 0, MPI_COMM_WORLD);
+    double result = 0;
+    double norm = 0;
+    double norm_buff = 0;
+    int flag = 0;
+    // MPI JACOBI CALCULATION USING STATIC DISTRIBUTION "QUEUE"
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    for(size_t i = 0; i < 20; ++i) {
+        for(size_t k = 0; k < counters[1]; ++k) {
+            // prev[k] = curr[k];
+            curr[k] = 0;
+        }
+        if(0 == id) {
+            auto temp = 0;
+            for(size_t k = 0; k < queue_length; ++k) {
+                auto send_rank = (k > size - 1) ? k - size * (k / size) : k;
+                if(send_rank != id)
+                    MPI_Send(
+                        coefs + k * counters[2], counters[2], MPI_DOUBLE,
+                        send_rank, 0, MPI_COMM_WORLD);
+                else {
+                    for(size_t j = 0; j < counters[2]; ++j) {
+                        received_buff[j] = coefs[k * counters[2] + j];
+                    }
+                    result = received_buff[counters[1]];
+                    // 4 - number of CPUs (Processes)
+                    auto offset = id + 4 * temp;
+                    for(size_t j = 0; j < counters[1]; ++j) {
+                        if(j != offset)
+                            result -= received_buff[j] * prev[j];
+                    }
+                    result /= received_buff[offset];
+                    curr[offset] = result;
+                    if(temp < recv_repeater[id])
+                        ++temp;
+                }
+            }
+        }
+
+        for(size_t k = 0; k < recv_repeater[id]; ++k) {
+            if(0 != id) {
+                MPI_Recv(
+                    received_buff, counters[2], MPI_DOUBLE, 0, MPI_ANY_TAG,
+                    MPI_COMM_WORLD, &stats[0]);
+                result = received_buff[counters[1]];
+                // 4 - number of CPUs (Processes)
+                auto offset = id + 4 * k;
+                for(size_t j = 0; j < counters[1]; ++j) {
+                    if(j != offset)
+                        result -= received_buff[j] * prev[j];
+                }
+                result /= received_buff[offset];
+                curr[offset] = result;
+            }
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Allreduce(
+            curr, prev, counters[1], MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Bcast(&flag, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        if(flag == 1) {
+            break;
+        }
+        // MPI_Bcast(curr, counters[1], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    }
+
+    // MPI JACOBI CALCULATION USING STATIC DISTRIBUTION "QUEUE"
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    // debug output
+    if(0 == id) {
+        std::cout << "final result: " << std::endl;
+        for(size_t k = 0; k < counters[1]; ++k)
+            std::cout << prev[k] << " ";
     }
 
     MPI_Finalize();
-}
 
+    delete[] coefs;
+    delete[] received_buff;
+    delete[] prev;
+    delete[] curr;
+}
 } // namespace mpi_extension
 
 } // namespace algebra
