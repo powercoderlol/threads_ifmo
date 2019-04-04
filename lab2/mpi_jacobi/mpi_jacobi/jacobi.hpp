@@ -37,6 +37,7 @@ std::vector<T> yakoby_main(
     T norm, buff;
     size_t offset, matrix_dimension;
     std::vector<T> prev, curr;
+    tp t0, t1;
     // get offset
     offset = static_cast<size_t>(input_matrix.back());
     input_matrix.pop_back();
@@ -47,6 +48,7 @@ std::vector<T> yakoby_main(
     // fill initial data
     curr.resize(matrix_dimension, 0);
     prev.resize(matrix_dimension, 0);
+    t0 = chasiki::now();
     for(size_t i = 0; i < iteration_num; ++i) {
         prev = curr;
         for(size_t j = 0; j < matrix_dimension; ++j) {
@@ -70,23 +72,35 @@ std::vector<T> yakoby_main(
             }
         }
     }
+    t1 = chasiki::now();
+    time_utils::print_time_diff(t0, t1);
     return curr;
 }
 
 namespace mpi_extension {
 
-void mpi_jacobi(int argc, char* argv[]) {
+inline double chasiki() {
+    return MPI_Wtime();
+}
+
+void mpi_jacobi_batches(int argc, char* argv[]) {
     matrix_data buff;
     size_t counters[3];
     int id, size;
     size_t iteration_num = 100;
-    size_t queue_length;
+    size_t queue_length, distr_number, cellar;
     double e = 0.001;
-    double *coefs, *received_buff, *prev, *curr, *curr_temp;
+    double *coefs, *prev, *curr, *curr_temp;
+    size_t* recv_repeater;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    recv_repeater = new size_t[size]();
+
+    if(argc > 1)
+        e = std::stod(argv[1]);
 
     if(0 == id) {
         buff = filesystem::read("input_data.txt");
@@ -97,33 +111,118 @@ void mpi_jacobi(int argc, char* argv[]) {
 
     MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
 
-    coefs = new double[counters[0]];
-    received_buff = new double[counters[2]];
-    prev = new double[counters[1]];
-    curr_temp = new double[counters[1]];
-    curr = new double[counters[1]];
-    for(size_t k = 0; k < counters[1]; ++k) {
-        curr[k] = 0;
-        prev[k] = 0;
-        curr_temp[k] = 0;
-    }
+    coefs = new double[counters[0]]();
+    prev = new double[counters[1]]();
+    curr_temp = new double[counters[1]]();
+    curr = new double[counters[1]]();
 
     if(0 == id) {
         for(size_t k = 0; k < buff.counters[0]; ++k)
             coefs[k] = buff.pdata[k];
+        // very smart (not)
+        delete[] buff.pdata;
+        distr_number = buff.counters[1] / size;
+        // cellar - how much rows distribute using "static queue"
+        cellar = buff.counters[1] - distr_number * size;
+        distr_number = distr_number * size;
+    }
+
+    MPI_Finalize();
+
+    delete[] recv_repeater;
+    delete[] coefs;
+    delete[] prev;
+    delete[] curr;
+}
+
+void mpi_jacobi(int argc, char* argv[]) {
+    matrix_data buff;
+    size_t counters[3];
+    int id, size, offset, next_row;
+    size_t iteration_num = 100;
+    size_t queue_length;
+    size_t* recv_repeater;
+    double result, norm, norm_temp, e = 0.001;
+    double *coefs, *prev, *curr, *curr_temp;
+    double t0, t1, root_time;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    // get epsilon
+    if(argc > 1)
+        e = std::stod(argv[1]);
+
+    if(0 == id) {
+        buff = filesystem::read("input_data.txt");
+        counters[0] = buff.counters[0];
+        counters[1] = buff.counters[1];
+        counters[2] = buff.counters[2];
+    }
+
+    MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
+
+    coefs = new double[counters[0]]();
+    prev = new double[counters[1]]();
+    curr_temp = new double[counters[1]]();
+    curr = new double[counters[1]]();
+
+    if(0 == id) {
+        memcpy(coefs, buff.pdata, counters[0] * sizeof(*coefs));
         delete[] buff.pdata;
     }
 
+    // huge
+    // but MAY BE better than send row on each occasion
     MPI_Bcast(coefs, counters[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-    size_t* recv_repeater = new size_t[size];
-    for(int sz = 0; sz < size; ++sz)
-        recv_repeater[sz] = 0;
+    recv_repeater = new size_t[size]();
 
     // static distribution, chunk = 1 row
+    //
+    // recv_repeater[id] - how much rows
+    // distributed for proc with id
+    //
+    // Example:
+    // 1. matrix 6x6
+    // 2. communicator size = 4
+    //
+    // for each iteration while norm >= e:
+    // 1 proc: 1 and 5 rows
+    // 2 proc: 2 and 6 rows
+    // 3 proc: 3 row
+    // 4 proc: 4 row
+    //
+    // end of iteration for proc 0:
+    // curr[ X1, 0, 0, 0, X5, 0 ]
+    // where X1 and X5 - calculated values
+    //
+    // after reduce in all processes:
+    // prev[ X1, X2, X3, X4, X5, X6 ]
+    // where X1..X6 - calculated values by all
+    //
+    // Problem:
+    // if all proc tasks finished
+    // it can't get ready task
+    // not according for id in communicator
+    //
+    // Solution: maintain real queue by root process
+    //
+    // Expected side-effects: performance degradation
+    // because of additional communications
     queue_length = counters[1];
     if(0 == id) {
         for(size_t k = 0; k < queue_length; ++k) {
+            // for matrix 10x10; size = 4; proc 1:
+            // queue_length = 10
+            // k = 1
+            // send_rank = 1 - 4 * ( 1 / 4 ) = 1
+            // k = 5
+            // send_rank = 5 - 4 * ( 5 / 4 ) = 1
+            // k = 9
+            // send_rank = 9 - 4 * ( 9 / 4) = 1
+            // recv_repeater[1] = 3
             auto send_rank = k - size * (k / size);
             ++recv_repeater[send_rank];
         }
@@ -131,17 +230,16 @@ void mpi_jacobi(int argc, char* argv[]) {
 
     MPI_Bcast(recv_repeater, size, my_MPI_SIZE_T, 0, MPI_COMM_WORLD);
 
-    double result = 0;
-    int offset = 0;
-    int next_row = 0;
-    double norm = 0;
-    double norm_temp = 0;
+    result = 0;
+    offset = 0;
+    next_row = 0;
+    norm = 0;
+    norm_temp = 0;
     size_t final_iteration = iteration_num;
     int exit_flag = 0;
+    t0 = chasiki();
     for(size_t i = 0; i < iteration_num; ++i) {
-        for(size_t k = 0; k < counters[1]; ++k) {
-            curr[k] = 0;
-        }
+        memset(curr, 0, counters[1] * sizeof(*curr));
         for(size_t k = 0; k < recv_repeater[id]; ++k) {
             // offset for static distribution
             // 0 - second iteration => 4
@@ -155,7 +253,6 @@ void mpi_jacobi(int argc, char* argv[]) {
             }
             result /= coefs[next_row + offset];
             curr[offset] = result;
-            result = 0;
         }
         MPI_Allreduce(
             curr, curr_temp, counters[1], MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -168,7 +265,7 @@ void mpi_jacobi(int argc, char* argv[]) {
                         norm = norm_temp;
                 }
                 if(norm < e) {
-                    final_iteration = i;
+                    final_iteration = i + 1;
                     exit_flag = 1;
                 }
             }
@@ -176,16 +273,22 @@ void mpi_jacobi(int argc, char* argv[]) {
         MPI_Bcast(&exit_flag, 1, MPI_INT, 0, MPI_COMM_WORLD);
         if(exit_flag == 1)
             break;
-        for(size_t n = 0; n < counters[1]; ++n)
-            prev[n] = curr_temp[n];
+        memcpy(prev, curr_temp, counters[1] * sizeof(*prev));
     }
+    t1 = chasiki();
+
+    auto time_diff = t1 - t0;
+
+    MPI_Reduce(
+        &time_diff, &root_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
     // debug output
     // TODO: json output for graphics
     // TODO: add time points
     if(0 == id) {
+        std::cout << "Execution time (sec): " << root_time << std::endl;
         std::cout << "final iteration num: " << final_iteration << std::endl;
-        std::cout << "final result: " << std::endl;
+        std::cout << "result vector: " << std::endl;
         for(size_t k = 0; k < counters[1]; ++k)
             std::cout << curr_temp[k] << " ";
     }
@@ -194,7 +297,6 @@ void mpi_jacobi(int argc, char* argv[]) {
 
     delete[] recv_repeater;
     delete[] coefs;
-    delete[] received_buff;
     delete[] prev;
     delete[] curr;
 }
@@ -214,6 +316,10 @@ void fancy_mpi_jacobi(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    // get epsilon
+    if(argc > 1)
+        e = std::stod(argv[1]);
+
     reqs = new MPI_Request[size];
     stats = new MPI_Status[size];
 
@@ -226,18 +332,11 @@ void fancy_mpi_jacobi(int argc, char* argv[]) {
 
     MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
 
-    coefs = new double[counters[0]];
-    received_buff = new double[counters[2]];
-    prev = new double[counters[1]];
-    curr_temp = new double[counters[1]];
-    curr = new double[counters[1]];
-    // memset(curr, 0, sizeof(curr));
-    // memset(prev, 0, sizeof(prev));
-    for(size_t k = 0; k < counters[1]; ++k) {
-        curr[k] = 0;
-        prev[k] = 0;
-        curr_temp[k] = 0;
-    }
+    coefs = new double[counters[0]]();
+    received_buff = new double[counters[2]]();
+    prev = new double[counters[1]]();
+    curr_temp = new double[counters[1]]();
+    curr = new double[counters[1]]();
 
     if(0 == id) {
         for(size_t k = 0; k < buff.counters[0]; ++k)
