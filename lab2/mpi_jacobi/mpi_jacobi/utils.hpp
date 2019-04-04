@@ -48,8 +48,6 @@ matrix_data read(std::string filename) {
             ++data.counters[0];
             break;
         case 2:
-            /*data.pdata = (double*)malloc(
-                sizeof(double) * (data.counters[1] * data.counters[2]));*/
             data.pdata = new double[data.counters[1] * data.counters[2]];
             data.pdata[data.counters[0] - 2] = stod(token);
             ++data.counters[0];
@@ -61,9 +59,6 @@ matrix_data read(std::string filename) {
         }
     }
     data.counters[0] = data.counters[0] - 2;
-    /*data.pdata[data.counters[0] - 2] = data.counters[1];
-    data.pdata[data.counters[0] - 1] = data.counters[2];
-    data.pdata[data.counters[0]] = data.counters[0] - 2;*/
     return data;
 }
 

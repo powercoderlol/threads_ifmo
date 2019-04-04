@@ -176,12 +176,13 @@ void mpi_jacobi(int argc, char* argv[]) {
         MPI_Bcast(&exit_flag, 1, MPI_INT, 0, MPI_COMM_WORLD);
         if(exit_flag == 1)
             break;
-        MPI_Allreduce(
-            curr, prev, counters[1], MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        for(size_t n = 0; n < counters[1]; ++n)
+            prev[n] = curr_temp[n];
     }
 
     // debug output
     // TODO: json output for graphics
+    // TODO: add time points
     if(0 == id) {
         std::cout << "final iteration num: " << final_iteration << std::endl;
         std::cout << "final result: " << std::endl;
