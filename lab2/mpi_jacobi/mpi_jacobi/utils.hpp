@@ -30,6 +30,53 @@ struct matrix_data {
     }
 };
 
+template<
+    class T,
+    class = typename std::enable_if<std::is_floating_point<T>::value>::type>
+std::stringstream build_json_results(
+    double* times, size_t& passed_iteration_count, T* results, size_t& length,
+    int& comm_size, int precision, bool write_result = false,
+    size_t output_precision = 0) {
+    bool first;
+    std::stringstream json;
+    json << "{\"data_type\": \"" << typeid(T).name() << "\"";
+    json << ", \"matrix_scale\": " << std::to_string(length);
+    json << ", \"communicator_size\": " << std::to_string(comm_size);
+    json << ", \"passed_iteration_count\": "
+         << std::to_string(passed_iteration_count);
+    json << ", \"decimal_precision_power\": " << std::to_string(precision);
+
+    first = true;
+    json << ", \"execution_times\": [";
+    for(int k = 0; k < comm_size; ++k) {
+        if(!first) {
+            json << ", ";
+        }
+        json << times[k];
+        if(first)
+            first = false;
+    }
+    json << "]";
+
+    if(write_result) {
+        first = true;
+        json << ", \"result_vector\": [";
+        if(output_precision != 0)
+            json << std::setprecision(output_precision);
+        for(size_t k = 0; k < length; ++k) {
+            if(!first) {
+                json << ", ";
+            }
+            json << results[k];
+            if(first)
+                first = false;
+        }
+        json << "]";
+    }
+    json << "}" << std::endl;
+    return json;
+}
+
 namespace filesystem {
 
 matrix_data read(std::string filename) {

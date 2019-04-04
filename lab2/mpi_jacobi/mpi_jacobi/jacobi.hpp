@@ -138,23 +138,26 @@ void mpi_jacobi_batches(int argc, char* argv[]) {
 void mpi_jacobi(int argc, char* argv[]) {
     matrix_data buff;
     size_t counters[3];
-    int id, size, offset, next_row;
+    int id, size, offset, next_row, precision = -3;
     size_t iteration_num = 100;
     size_t queue_length;
     size_t* recv_repeater;
     double result, norm, norm_temp, e = 0.001;
-    double *coefs, *prev, *curr, *curr_temp;
-    double t0, t1, root_time;
+    double *coefs, *prev, *curr, *curr_temp, *root_time;
+    double t0, t1;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    // get epsilon
-    if(argc > 1)
-        e = std::stod(argv[1]);
+    root_time = new double[size];
+    memset(root_time, 0, size * sizeof(*root_time));
 
     if(0 == id) {
+        if(argc > 1) {
+            precision = std::stoi(argv[1]);
+            e = decimal_degree(precision);
+        }
         buff = filesystem::read("input_data.txt");
         counters[0] = buff.counters[0];
         counters[1] = buff.counters[1];
@@ -279,18 +282,15 @@ void mpi_jacobi(int argc, char* argv[]) {
 
     auto time_diff = t1 - t0;
 
-    MPI_Reduce(
-        &time_diff, &root_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Gather(
+        &time_diff, 1, MPI_DOUBLE, root_time, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // debug output
-    // TODO: json output for graphics
-    // TODO: add time points
     if(0 == id) {
-        std::cout << "Execution time (sec): " << root_time << std::endl;
-        std::cout << "final iteration num: " << final_iteration << std::endl;
-        std::cout << "result vector: " << std::endl;
-        for(size_t k = 0; k < counters[1]; ++k)
-            std::cout << curr_temp[k] << " ";
+        std::cout << build_json_results(
+                         root_time, final_iteration, curr_temp, counters[1],
+                         size, precision, false)
+                         .rdbuf();
     }
 
     MPI_Finalize();

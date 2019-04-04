@@ -5,8 +5,6 @@
 #include "jacobi.hpp"
 #include "utils.hpp"
 
-#include <Windows.h>
-
 void jacobi_test() {
     std::vector<double> input_matrix;
     std::stringstream sstr;
