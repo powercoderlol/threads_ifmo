@@ -83,68 +83,72 @@ inline double chasiki() {
     return MPI_Wtime();
 }
 
-void mpi_jacobi_batches(int argc, char* argv[]) {
-    matrix_data buff;
-    size_t counters[3];
-    int id, size;
-    size_t iteration_num = 100;
-    size_t queue_length, distr_number, cellar;
-    double e = 0.001;
-    double *coefs, *prev, *curr, *curr_temp;
-    size_t* recv_repeater;
+// void mpi_jacobi_batches(int argc, char* argv[]) {
+//    matrix_data buff;
+//    size_t counters[3];
+//    int id, size;
+//    size_t iteration_num = 100;
+//    size_t queue_length, distr_number, cellar;
+//    double e = 0.001;
+//    double *coefs, *prev, *curr, *curr_temp;
+//    size_t* recv_repeater;
+//
+//    MPI_Init(&argc, &argv);
+//    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+//    MPI_Comm_size(MPI_COMM_WORLD, &size);
+//
+//    recv_repeater = new size_t[size]();
+//
+//    if(argc > 1)
+//        e = std::stod(argv[1]);
+//
+//    if(0 == id) {
+//        buff = filesystem::read("input_data.txt");
+//        counters[0] = buff.counters[0];
+//        counters[1] = buff.counters[1];
+//        counters[2] = buff.counters[2];
+//    }
+//
+//    MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
+//
+//    coefs = new double[counters[0]]();
+//    prev = new double[counters[1]]();
+//    curr_temp = new double[counters[1]]();
+//    curr = new double[counters[1]]();
+//
+//    if(0 == id) {
+//        for(size_t k = 0; k < buff.counters[0]; ++k)
+//            coefs[k] = buff.pdata[k];
+//        // very smart (not)
+//        delete[] buff.pdata;
+//        distr_number = buff.counters[1] / size;
+//        // cellar - how much rows distribute using "static queue"
+//        cellar = buff.counters[1] - distr_number * size;
+//        distr_number = distr_number * size;
+//    }
+//
+//    MPI_Finalize();
+//
+//    delete[] recv_repeater;
+//    delete[] coefs;
+//    delete[] prev;
+//    delete[] curr;
+//}
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &id);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    recv_repeater = new size_t[size]();
-
-    if(argc > 1)
-        e = std::stod(argv[1]);
-
-    if(0 == id) {
-        buff = filesystem::read("input_data.txt");
-        counters[0] = buff.counters[0];
-        counters[1] = buff.counters[1];
-        counters[2] = buff.counters[2];
-    }
-
-    MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
-
-    coefs = new double[counters[0]]();
-    prev = new double[counters[1]]();
-    curr_temp = new double[counters[1]]();
-    curr = new double[counters[1]]();
-
-    if(0 == id) {
-        for(size_t k = 0; k < buff.counters[0]; ++k)
-            coefs[k] = buff.pdata[k];
-        // very smart (not)
-        delete[] buff.pdata;
-        distr_number = buff.counters[1] / size;
-        // cellar - how much rows distribute using "static queue"
-        cellar = buff.counters[1] - distr_number * size;
-        distr_number = distr_number * size;
-    }
-
-    MPI_Finalize();
-
-    delete[] recv_repeater;
-    delete[] coefs;
-    delete[] prev;
-    delete[] curr;
-}
-
-void mpi_jacobi(int argc, char* argv[]) {
+void mpi_jacobi_scatter(int argc, char* argv[]) {
     matrix_data buff;
     size_t counters[3];
     int id, size, offset, next_row, precision = -3;
     size_t iteration_num = 100;
-    size_t queue_length;
+    size_t queue_length, final_iteration, distribution_number, matrix_offset,
+        cellar;
     size_t* recv_repeater;
+    size_t* cellar_repeater;
     double result, norm, norm_temp, e = 0.001;
-    double *coefs, *prev, *curr, *curr_temp, *root_time;
+    double *coefs, *prev, *curr, *curr_temp, *root_time, *received_buffer;
     double t0, t1;
+
+    std::vector<std::pair<size_t, size_t>> distribution_queue;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
@@ -169,9 +173,130 @@ void mpi_jacobi(int argc, char* argv[]) {
     coefs = new double[counters[0]]();
     prev = new double[counters[1]]();
     curr_temp = new double[counters[1]]();
+    // curr = new double[counters[1]]();
+
+    if(0 == id) {
+        memcpy(coefs, buff.pdata, counters[0] * sizeof(*coefs));
+        delete[] buff.pdata;
+    }
+
+    int batch_power = counters[1] / size;
+    distribution_number = size * batch_power;
+    cellar = counters[1] - distribution_number;
+
+    received_buffer = new double[counters[2] * batch_power];
+    cellar_repeater = new size_t[size];
+
+    if(0 == id) {
+        size_t cellar_queue_length = cellar;
+        for(size_t k = 0; k < cellar_queue_length; ++k) {
+            auto send_rank = k - size * (k / size);
+            // return constexpr?
+            distribution_queue.push_back(
+                std::make_pair(send_rank, distribution_number + 1 + k));
+            // ++cellar_repeater[send_rank];
+        }
+    }
+
+    bool flag = true;
+    int send_recv_count = counters[2] * batch_power;
+    MPI_Scatter(
+        coefs, send_recv_count, MPI_DOUBLE, received_buffer, send_recv_count,
+        MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    // Scatter cellar
+
+    // 0. Send extra rows ???
+    // 1. Jacobi calculator
+    // NB: distribution_number + cellar_repeater[id] - how much rows we have in
+    // curr processor
+    size_t current_repeat_counter =
+        distribution_number; // + cellar_repeater[id];
+    curr = new double[current_repeat_counter];
+    for(size_t p = 0; p < current_repeat_counter; ++p) {
+        // get last free member
+        curr[p] = received_buffer[p * counters[2]];
+        // get current offset
+        int border = batch_power * size + p;
+        for(size_t t = 0; t < counters[1]; ++t) {
+            // if != row_id
+            if(border != t)
+                curr[p] += received_buffer[p * t];
+        }
+        curr[p] /= curr[border];
+    }
+
+    // 2. share cellar through recv_repeater
+    // 3 AllGather...
+
+    // do {
+    //    int send_recv_count = counters[2] * batch_power;
+    //    MPI_Scatter(
+    //        coefs, send_recv_count, MPI_DOUBLE, received_buffer,
+    //        send_recv_count, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    //    flag = false;
+    //} while(flag);
+
+    // debug output
+    /*if(0 == id) {
+        std::cout << build_json_results(
+                         root_time, final_iteration, curr_temp, counters[1],
+                         size, precision, false)
+                         .rdbuf();
+    }*/
+
+    MPI_Finalize();
+
+    //    delete[] recv_repeater;
+    delete[] coefs;
+    delete[] prev;
+    delete[] curr;
+    delete[] cellar_repeater;
+    delete[] received_buffer;
+
+    return;
+} // namespace mpi_extension
+
+void mpi_jacobi(int argc, char* argv[]) {
+    matrix_data buff;
+    size_t counters[3];
+    int id, size, offset, next_row, precision = -3;
+    size_t iteration_num = 100;
+    size_t queue_length;
+    size_t* recv_repeater;
+    double result, norm, norm_temp, e = 0.001;
+    double *coefs, *prev, *curr, *curr_temp, *root_time;
+    double t0, t1;
+    bool print_result;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    print_result = atoi(argv[4]);
+
+    root_time = new double[size];
+    memset(root_time, 0, size * sizeof(*root_time));
+
+    if(0 == id) {
+        if(argc > 1) {
+            precision = std::stoi(argv[1]);
+            e = decimal_degree(precision);
+        }
+        buff = filesystem::read(argv[2]);
+        counters[0] = buff.counters[0];
+        counters[1] = buff.counters[1];
+        counters[2] = buff.counters[2];
+    }
+
+    MPI_Bcast(&counters, 3, MPI_INT, 0, MPI_COMM_WORLD);
+
+    coefs = new double[counters[0]]();
+    prev = new double[counters[1]]();
+    curr_temp = new double[counters[1]]();
     curr = new double[counters[1]]();
 
     if(0 == id) {
+        filesystem::read_first_precision(prev, argv[3]);
         memcpy(coefs, buff.pdata, counters[0] * sizeof(*coefs));
         delete[] buff.pdata;
     }
@@ -179,6 +304,7 @@ void mpi_jacobi(int argc, char* argv[]) {
     // huge
     // but MAY BE better than send row on each occasion
     MPI_Bcast(coefs, counters[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prev, counters[1], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     recv_repeater = new size_t[size]();
 
@@ -233,6 +359,7 @@ void mpi_jacobi(int argc, char* argv[]) {
 
     MPI_Bcast(recv_repeater, size, my_MPI_SIZE_T, 0, MPI_COMM_WORLD);
 
+    t0 = MPI_Wtime();
     result = 0;
     offset = 0;
     next_row = 0;
@@ -240,7 +367,6 @@ void mpi_jacobi(int argc, char* argv[]) {
     norm_temp = 0;
     size_t final_iteration = iteration_num;
     int exit_flag = 0;
-    t0 = chasiki();
     for(size_t i = 0; i < iteration_num; ++i) {
         memset(curr, 0, counters[1] * sizeof(*curr));
         for(size_t k = 0; k < recv_repeater[id]; ++k) {
@@ -278,7 +404,7 @@ void mpi_jacobi(int argc, char* argv[]) {
             break;
         memcpy(prev, curr_temp, counters[1] * sizeof(*prev));
     }
-    t1 = chasiki();
+    t1 = MPI_Wtime();
 
     auto time_diff = t1 - t0;
 
@@ -289,7 +415,7 @@ void mpi_jacobi(int argc, char* argv[]) {
     if(0 == id) {
         std::cout << build_json_results(
                          root_time, final_iteration, curr_temp, counters[1],
-                         size, precision, false)
+                         size, precision, print_result)
                          .rdbuf();
     }
 
@@ -299,6 +425,7 @@ void mpi_jacobi(int argc, char* argv[]) {
     delete[] coefs;
     delete[] prev;
     delete[] curr;
+    delete[] curr_temp;
 }
 
 void fancy_mpi_jacobi(int argc, char* argv[]) {
@@ -322,7 +449,6 @@ void fancy_mpi_jacobi(int argc, char* argv[]) {
 
     reqs = new MPI_Request[size];
     stats = new MPI_Status[size];
-
     if(0 == id) {
         buff = filesystem::read("input_data.txt");
         counters[0] = buff.counters[0];
@@ -349,7 +475,6 @@ void fancy_mpi_jacobi(int argc, char* argv[]) {
 
     MPI_Bcast(coefs, counters[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-    int test_arr[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     size_t recv_repeater[4] = {0, 0, 0, 0};
     // memset(recv_repeater, 0, sizeof(recv_repeater));
 

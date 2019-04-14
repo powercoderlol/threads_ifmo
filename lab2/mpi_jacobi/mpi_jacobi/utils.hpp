@@ -79,6 +79,17 @@ std::stringstream build_json_results(
 
 namespace filesystem {
 
+void read_first_precision(double* input_data, std::string filename) {
+    std::stringstream stream;
+    std::string token;
+    stream << std::ifstream(filename).rdbuf();
+    size_t iterator = 0;
+    while(stream >> token) {
+        input_data[iterator] = stod(token);
+        ++iterator;
+    }
+}
+
 matrix_data read(std::string filename) {
     std::string token;
     matrix_data data;

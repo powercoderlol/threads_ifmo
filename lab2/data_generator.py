@@ -63,6 +63,10 @@ def diagonally_dominant_test(matrix):
 
 def main():
     unknown_number = int(sys.argv[1])
+    f = open("first_precision.txt","w")
+    for i in range(unknown_number):
+        f.write("{0} ".format(0.5))
+    f.close()
     coefs = generate_test_data(num = unknown_number)
     if(diagonally_dominant_test(coefs)):
         right_side = generate_test_data(num = unknown_number, left = False)

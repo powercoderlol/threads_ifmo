@@ -19,6 +19,8 @@ void jacobi_test() {
 }
 
 int main(int argc, char* argv[]) {
+    // algebra::mpi_extension::mpi_jacobi_scatter(argc, argv);
+    // jacobi_test();
     algebra::mpi_extension::mpi_jacobi(argc, argv);
 
     return 0;
