@@ -45,3 +45,6 @@ venv/
 *.sln
 *.txt
 test
+*report*
+#but this
+!CMakeLists.txt
