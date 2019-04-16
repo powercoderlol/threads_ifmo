@@ -45,3 +45,7 @@ venv/
 *.sln
 *.txt
 test
+*report*
+dont_commit_me
+#but this
+!CMakeLists.txt
