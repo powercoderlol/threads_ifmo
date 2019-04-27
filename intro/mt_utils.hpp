@@ -1,16 +1,11 @@
 #pragma once
-#include <cstdint>
-
 #include <algorithm>
-
-#include <vector>
-
+#include <chrono>
+#include <cstdint>
+#include <iostream>
 #include <mutex>
 #include <thread>
-
-#include <iostream>
-
-#include <chrono>
+#include <vector>
 
 #include "integral.hpp"
 
@@ -50,7 +45,7 @@ void multithread_integral_test(
     auto milliseconds =
         std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 
-    std::cout << "Result is: " << result << " Operation time: " << seconds
+    std::cout << "Result is: " << result << " Execution time: " << seconds
               << " sec (" << milliseconds << " ms)" << std::endl;
 
     return;

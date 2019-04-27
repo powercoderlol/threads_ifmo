@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <math.h>
 
 double integrate(
     const std::function<double(double)>& func, const double a, const double b,
@@ -14,8 +15,14 @@ double integrate(
     return result;
 }
 
+
+// execution function
 double liner(double x) {
     return x;
+}
+
+double func(double x) {
+
 }
 
 double integrate(const double a, const double b, const int n) {
