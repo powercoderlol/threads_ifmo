@@ -7,9 +7,24 @@ namespace mpi = boost::mpi;
 int main(int argc, char* argv[]) {
     mpi::environment env(argc, argv);
     mpi::communicator world;
-    std::vector<int> unsorted_list{36,   11, 4,  3,  2354, 67, 53, 95,  33, 534,
-                                   11,   12, 3,  86, 6,    52, 21, 103, 54, 42,
-                                   2314, 0,  22, 0,  1,    1,  43, 21};
+    std::vector<int> unsorted_list;
+
+    std::string filename = "input.txt";
+    if(0 == world.rank()) {
+        if(argc > 1) {
+            filename = argv[1];
+            if(utils::mpi_lab_debug_flag)
+                std::cout << filename;
+        }
+    }
+
+    if(0 == world.rank()) {
+        utils::read_from_file(unsorted_list, filename);
+        if(utils::mpi_lab_debug_flag)
+            for(const auto& val : unsorted_list)
+                std::cout << val << " ";
+    }
+
     auto list = algo::mpi_extension::hypersort(std::move(unsorted_list), world);
 
     unsorted_list.clear();

@@ -15,6 +15,7 @@ set(SOURCES
   main.cpp
   qsort.hpp
   hyperqsort.hpp
+  utils.hpp
 )
 
 if(Boost_FOUND)

@@ -3,11 +3,9 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/allocator.hpp>
 #include <boost/serialization/vector.hpp>
-#include <iostream>
 
 #include "qsort.hpp"
-
-#define _ITERATOR_DEBUG_LEVEL 0
+#include "utils.hpp"
 
 namespace algo {
 namespace mpi_extension {
@@ -15,7 +13,7 @@ namespace mpi_extension {
 namespace mpi = boost::mpi;
 
 std::vector<int> hypersort_internal(
-    std::vector<int> list, mpi::communicator comm) {
+    std::vector<int>&& list, mpi::communicator comm) {
     int pivot = 0;
 
     if(1 == comm.size()) {
@@ -71,23 +69,42 @@ std::vector<int> hypersort_internal(
 }
 
 std::vector<int> hypersort(
-    std::vector<int> unsorted_list, mpi::communicator comm) {
+    std::vector<int>&& unsorted_list, mpi::communicator comm) {
     std::vector<int> sizes_;
-    sizes_.resize(comm.size() - 1);
+    std::vector<int> list;
+    int list_size = 0;
 
-    auto list_size = unsorted_list.size();
+    if(0 == comm.rank())
+        list_size = unsorted_list.size();
+
+    mpi::broadcast(comm, list_size, 0);
+
     auto distribution_number = list_size / comm.size();
     auto cellar = list_size % comm.size();
 
-    std::fill(sizes_.begin(), sizes_.end(), distribution_number);
-    sizes_.push_back(cellar + distribution_number);
+    // Microsoft MPI workaround
+    {
+        sizes_.resize(comm.size() - 1);
+        std::fill(sizes_.begin(), sizes_.end(), distribution_number);
+        sizes_.push_back(cellar + distribution_number);
 
-    std::vector<int> list;
+        if(0 != comm.rank()) {
+            unsorted_list.resize(list_size);
+        }
+    }
 
     if(comm.size() - 1 != comm.rank())
         list.resize(distribution_number);
     else
         list.resize(distribution_number + cellar);
+
+    if(utils::mpi_lab_debug_flag) {
+        std::cout << std::endl << comm.rank() << " : ";
+        std::cout << list.size() << " : " << unsorted_list.size() << " : "
+                  << list_size << " : " << sizes_.size() << std::endl;
+        for(auto val : sizes_)
+            std::cout << val << " ";
+    }
 
     mpi::scatterv(comm, unsorted_list.data(), sizes_, list.data(), 0);
 
