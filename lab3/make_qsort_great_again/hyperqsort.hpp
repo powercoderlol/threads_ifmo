@@ -3,6 +3,7 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/allocator.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/mpi/operations.hpp>
 
 #include "qsort.hpp"
 #include "utils.hpp"
@@ -16,12 +17,31 @@ std::vector<int> hypersort_internal(
     std::vector<int>&& list, mpi::communicator comm) {
     int pivot = 0;
 
+    if(utils::mpi_lab_debug_flag) {
+        std::cout << "<debug." << comm.rank()
+                  << "> Scatterv passed in communicator, size : " << comm.size()
+                  << std::endl;
+        for(const auto& val : list)
+            std::cout << val << " ";
+        std::cout << "<debug." << comm.rank()
+                  << "> Received list size : " << list.size() << std::endl
+                  << std::endl;
+    }
+
     if(1 == comm.size()) {
+        if(utils::mpi_lab_debug_flag)
+            std::cout << "<debug." << comm.rank() << "> Final point achieved!"
+                      << std::endl;
         return list;
     }
 
-    if(0 == comm.rank())
-        pivot = *list.begin();
+    if(0 == comm.rank()) {
+        if(list.empty())
+            // or std::numeric_limits<int>::max()
+            pivot = std::numeric_limits<int>::min();
+        else
+            pivot = *list.begin();
+    }
 
     mpi::broadcast(comm, pivot, 0);
 
@@ -84,29 +104,40 @@ std::vector<int> hypersort(
 
     // Microsoft MPI workaround
     {
-        sizes_.resize(comm.size() - 1);
-        std::fill(sizes_.begin(), sizes_.end(), distribution_number);
-        sizes_.push_back(cellar + distribution_number);
-
         if(0 != comm.rank()) {
             unsorted_list.resize(list_size);
         }
-    }
 
-    if(comm.size() - 1 != comm.rank())
-        list.resize(distribution_number);
-    else
-        list.resize(distribution_number + cellar);
+        sizes_.resize(comm.size() - 1);
+        std::fill(sizes_.begin(), sizes_.end(), distribution_number);
+        sizes_.push_back(cellar + distribution_number);
+        if(comm.size() - 1 != comm.rank())
+            list.resize(distribution_number);
+        else
+            list.resize(distribution_number + cellar);
+    }
 
     if(utils::mpi_lab_debug_flag) {
         std::cout << std::endl << comm.rank() << " : ";
         std::cout << list.size() << " : " << unsorted_list.size() << " : "
-                  << list_size << " : " << sizes_.size() << std::endl;
-        for(auto val : sizes_)
+                  << list_size << " : " << sizes_.size() << " : " << cellar
+                  << " : " << distribution_number << std::endl;
+        for(const auto& val : sizes_)
             std::cout << val << " ";
+        comm.barrier();
     }
 
     mpi::scatterv(comm, unsorted_list.data(), sizes_, list.data(), 0);
+    if(utils::mpi_lab_debug_flag) {
+        std::cout << "<debug." << comm.rank()
+                  << "> Scatterv passed in communicator, size : " << comm.size()
+                  << std::endl;
+        for(const auto& val : list)
+            std::cout << val << " ";
+        std::cout << "<debug." << comm.rank()
+                  << "> Received list size : " << list.size() << std::endl
+                  << std::endl;
+    }
 
     return hypersort_internal(std::move(list), comm);
 }
