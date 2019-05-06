@@ -25,7 +25,10 @@ int main(int argc, char* argv[]) {
     if(0 == world.rank()) {
         if(1 == opt) {
             utils::read_from_file(unsorted_list_, filename);
+            auto t1 = timer.elapsed();
             auto res_list = algo::qsort(unsorted_list_);
+            auto t2 = timer.elapsed();
+            std::cout << "Execution time: " << t2 - t1 << std::endl;
             for(const auto& val : res_list)
                 std::cout << val << " ";
             return 0;
@@ -40,7 +43,10 @@ int main(int argc, char* argv[]) {
 
     if(1 == world.size()) {
         if(0 == world.rank()) {
+            auto t1 = timer.elapsed();
             std::sort(unsorted_list.begin(), unsorted_list.end());
+            auto t2 = timer.elapsed();
+            std::cout << "Execution time: " << t2 - t1 << std::endl;
             for(const auto& val : unsorted_list)
                 std::cout << val << " ";
         }
