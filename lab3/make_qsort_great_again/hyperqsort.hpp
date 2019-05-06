@@ -77,8 +77,6 @@ std::vector<int> hypersort_internal(
         list.insert(list.begin(), c.begin(), c.end());
     }
 
-    std::sort(list.begin(), list.end());
-
     mpi::communicator new_comm;
     if(partner > comm.rank())
         new_comm = comm.split(0, comm.rank());
@@ -128,6 +126,8 @@ std::vector<int> hypersort(
     }
 
     mpi::scatterv(comm, unsorted_list.data(), sizes_, list.data(), 0);
+    std::sort(list.begin(), list.end());
+
     if(utils::mpi_lab_debug_flag) {
         std::cout << "<debug." << comm.rank()
                   << "> Scatterv passed in communicator, size : " << comm.size()
