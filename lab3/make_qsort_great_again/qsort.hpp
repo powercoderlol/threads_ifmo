@@ -4,6 +4,7 @@
 // get list by value and return by value not like std::sort()
 #include <algorithm>
 #include <list>
+#include <vector>
 
 namespace algo {
 
@@ -14,12 +15,12 @@ std::list<T> qsort(std::list<T> input) {
     std::list<T> result;
     result.splice(result.begin(), input, input.begin());
     T const& mediana = *result.begin();
-    auto devider = std::partition(
+    auto divider = std::partition(
         input.begin(), input.end(),
         [&](T const& val) { return val < mediana; });
 
     std::list<T> less;
-    less.splice(less.end(), input, input.begin(), devider);
+    less.splice(less.end(), input, input.begin(), divider);
 
     auto new_less(qsort(std::move(less)));
     auto more(qsort(std::move(input)));
@@ -28,5 +29,6 @@ std::list<T> qsort(std::list<T> input) {
     result.splice(result.begin(), new_less);
     return result;
 }
+
 
 } // namespace algo

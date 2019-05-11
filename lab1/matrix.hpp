@@ -1,8 +1,8 @@
 #pragma once
 
-#include <iostream>
-
 #include <omp.h>
+
+#include <iostream>
 
 #include <random>
 
