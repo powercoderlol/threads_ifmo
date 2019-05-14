@@ -13,6 +13,8 @@ message(STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS})
 
 set(SOURCES
   main.cpp
-  dijkstra.hpp)
+  dijkstra.hpp
+  utils.cpp
+  utils.hpp)
 
 add_executable(dijkstra ${SOURCES})
