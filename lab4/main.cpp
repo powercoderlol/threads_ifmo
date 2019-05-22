@@ -27,6 +27,7 @@ int main(int argc, char* argv[]) {
         omp_set_dynamic(0);
         omp_set_num_threads(parallel);
     }
+    auto write_to_file_flag = std::stoi(argv[5]);
 
     read_graph(input_filename, graph);
 
@@ -55,7 +56,8 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    write_to_file(output_filename, std::move(result));
+    if(write_to_file_flag)
+        write_to_file(output_filename, std::move(result));
     //    output_filename, {result.begin(), result.begin() + graph.size()});
 
     return 0;

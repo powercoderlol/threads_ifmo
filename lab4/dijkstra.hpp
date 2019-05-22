@@ -19,8 +19,8 @@ inline void chunk_config(int threshold, int& chunk) {
     if(threads_num < threshold)
         chunk = threshold / threads_num;
     else {
-        chunk = threshold;
-        omp_set_num_threads(threshold);
+        chunk = 1;
+        //omp_set_num_threads(threshold);
     }
 }
 
@@ -48,6 +48,7 @@ vector<size_t> dijkstra_shortest_path(
     for(size_t i = 0; i < n; ++i) {
         std::fill(mins.begin(), mins.end(), INF);
         std::fill(ids.begin(), ids.end(), n + 1);
+        chunk_config(n, chunk);
 #pragma omp parallel for schedule(dynamic, chunk) \
     shared(marked, distances, mins, ids)          \
         firstprivate(n) private(curr_vertex, j) if(parallel)
