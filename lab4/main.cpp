@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
         graph.at(start_node);
         auto t1 = chasiki::now();
         if(parallel)
-            result = parallel::dijkstra_shortest_path(graph, start_node);
+            result = parallel::dijkstra_shortest_path_v1(graph, start_node);
         else
             result = dijkstra_shortest_path(graph, start_node);
         auto t2 = chasiki::now();

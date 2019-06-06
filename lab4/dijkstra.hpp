@@ -20,7 +20,7 @@ inline void chunk_config(int threshold, int& chunk) {
         chunk = threshold / threads_num;
     else {
         chunk = 1;
-        //omp_set_num_threads(threshold);
+        // omp_set_num_threads(threshold);
     }
 }
 
@@ -31,10 +31,10 @@ vector<size_t> dijkstra_shortest_path(
     int k, j, chunk;
     size_t path_len, len, to, links_size, curr_vertex;
 
-    auto n = g.size();
+    size_t n = g.size();
     auto INF = std::numeric_limits<size_t>::max();
 
-    chunk_config(n, chunk);
+    chunk_config((int)n, chunk);
 
     vector<bool> marked(n, false);
     vector<size_t> distances(n, INF);
@@ -48,7 +48,7 @@ vector<size_t> dijkstra_shortest_path(
     for(size_t i = 0; i < n; ++i) {
         std::fill(mins.begin(), mins.end(), INF);
         std::fill(ids.begin(), ids.end(), n + 1);
-        chunk_config(n, chunk);
+        chunk_config((int)n, chunk);
 #pragma omp parallel for schedule(dynamic, chunk) \
     shared(marked, distances, mins, ids)          \
         firstprivate(n) private(curr_vertex, j) if(parallel)
@@ -70,7 +70,7 @@ vector<size_t> dijkstra_shortest_path(
         marked[curr_vertex] = true;
 
         links_size = g[curr_vertex].size();
-        chunk_config(links_size, chunk);
+        chunk_config((int)links_size, chunk);
 
 #pragma omp parallel for firstprivate(curr_vertex, links_size) private( \
     to, len, path_len, k) schedule(dynamic, chunk)                      \
@@ -89,6 +89,73 @@ vector<size_t> dijkstra_shortest_path(
     // distances.insert(distances.end(), parents.begin(), parents.end());
     return distances;
 }
+
+vector<size_t> dijkstra_shortest_path_v1(
+    const graph_src& g, size_t start_node, bool parallel = true) {
+    int k, j, chunk;
+    size_t path_len, len, to, links_size, curr_vertex, min_distance;
+
+    size_t n = g.size();
+    auto INF = std::numeric_limits<size_t>::max();
+
+    chunk_config((int)n, chunk);
+
+    vector<bool> marked(n, false);
+    vector<size_t> distances(n, INF);
+    distances[start_node] = 0;
+
+    for(size_t i = 0; i < n; ++i) {
+        curr_vertex = n + 1;
+        min_distance = INF;
+#pragma omp parallel //firstprivate(n, curr_vertex, min_distance) \
+        shared(distances, marked) private(j)
+        {
+            size_t local_vertex = curr_vertex;
+            size_t local_min_distance = min_distance;
+            #pragma omp for nowait // schedule(dynamic, chunk)
+            //firstprivate(local_vertex, local_min_distance)
+            for(j = 0; j < n; ++j) {
+                if(!marked[j]
+                   && (local_vertex == n + 1
+                       || distances[j] < distances[local_vertex])) {
+                    local_vertex = j;
+                    local_min_distance = distances[j];
+                }
+            }
+            #pragma omp critical
+            {
+                if(local_min_distance < min_distance) {
+                    min_distance = local_min_distance;
+                    curr_vertex = local_vertex;
+                }
+            }
+        }
+
+        if(distances[curr_vertex] == INF)
+            break;
+        marked[curr_vertex] = true;
+
+        links_size = g[curr_vertex].size();
+        chunk_config((int)links_size, chunk);
+
+#pragma omp parallel for firstprivate(curr_vertex, links_size) private( \
+    to, len, path_len, k) schedule(dynamic, chunk)                      \
+    shared(g, distances) if(parallel)
+        for(k = 0; k < links_size; ++k) {
+            to = g[curr_vertex][k].first;
+            len = g[curr_vertex][k].second;
+            path_len = distances[curr_vertex] + len;
+            if(path_len < distances[to]) {
+                distances[to] = path_len;
+                // parents[to] = curr_vertex;
+            }
+        }
+    }
+    // distances.reserve(2 * n);
+    // distances.insert(distances.end(), parents.begin(), parents.end());
+    return distances;
+}
+
 } // namespace parallel
 
 vector<size_t> dijkstra_shortest_path(const graph_src& g, size_t start_node) {
