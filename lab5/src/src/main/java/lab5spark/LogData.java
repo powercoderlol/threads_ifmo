@@ -44,4 +44,12 @@ public class LogData {
     public void setDate(String date) {
         this.date = date;
     }
+
+    public Integer getIntResponseCode() {
+        try {
+            return Integer.valueOf(returnCode);
+        } catch (NumberFormatException numberFormatException) {
+            return null;
+        }
+    }
 }
